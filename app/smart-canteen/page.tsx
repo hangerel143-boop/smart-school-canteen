@@ -266,7 +266,7 @@ export default function SmartCanteen() {
         <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: "2rem", letterSpacing: 2 }}>Smart<span style={{ color: "#D4A843" }}>Hub</span></div>
         
         <div style={{ display: "flex", alignItems: "center", gap: "1.5rem" }}>
-          <div style={{ textAlign: "right", display: "none", md: "block" }}>
+          <div className="hidden md:block" style={{ textAlign: "right" }}>
             <div style={{ fontSize: "0.8rem", fontWeight: 600 }}>{user.email}</div>
             <div onClick={handleLogout} style={{ fontSize: "0.7rem", color: "#D4A843", cursor: "pointer", textDecoration: "underline" }}>Системээс гарах</div>
           </div>
