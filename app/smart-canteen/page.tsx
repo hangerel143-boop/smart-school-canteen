@@ -1,377 +1,369 @@
-"use client"
+"use client";
 
-import { useState, useEffect } from "react";
-import { createClient } from "@supabase/supabase-js";
+import { useEffect, useState, useCallback } from "react";
+import { createClient, User } from "@supabase/supabase-js";
 
-// ─── SUPABASE CLIENT ──────────────────────────────────────────────────────────
+// ============================================================
+// SUPABASE CONFIG
+// ============================================================
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-// ─── TYPES ────────────────────────────────────────────────────────────────────
+// ============================================================
+// TYPES
+// ============================================================
 interface MenuItem {
-  id: number;
+  id: string;
   name: string;
   price: number;
-  description: string;
-  emoji: string;
-  tag: string;
+  category: string;
+  emoji?: string;
+  image_url?: string;
+  description?: string;
+  is_new?: boolean;
+  available?: boolean;
 }
 
-interface Order {
-  id: number;
-  created_at: string;
-  student_name: string;
-  item_name: string;
-  quantity: number;
-  total_price: number;
+interface CartEntry {
+  item: MenuItem;
+  qty: number;
 }
 
-// ─── MENU DATA ────────────────────────────────────────────────────────────────
-const MENU_ITEMS: MenuItem[] = [
-  { id: 1, name: "Beef Fried Rice",      price: 2500, description: "Wok-tossed jasmine rice with tender beef strips, egg, and seasonal vegetables.", emoji: "🍚", tag: "Best Seller"     },
-  { id: 2, name: "Chicken Soup",         price: 2000, description: "Slow-cooked broth with shredded chicken, noodles, and fresh herbs.",             emoji: "🍜", tag: "Warm & Cozy"    },
-  { id: 3, name: "Veggie Steamed Buns",  price: 1500, description: "Fluffy bao filled with seasoned cabbage, tofu, and shiitake mushrooms.",          emoji: "🥟", tag: "Vegetarian"     },
-  { id: 4, name: "Grilled Lamb Skewers", price: 3000, description: "Seasoned Mongolian-style lamb on skewers, charred to perfection.",                emoji: "🍢", tag: "Today's Special" },
-  { id: 5, name: "Milk Tea",             price: 1000, description: "Creamy Mongolian suutei tsai — salted milk tea brewed with black tea.",            emoji: "🍵", tag: "Drink"          },
-  { id: 6, name: "Tsuivan Noodles",      price: 2200, description: "Hand-pulled noodles stir-fried with mutton and fresh carrots and onions.",         emoji: "🍝", tag: "Traditional"    },
+interface Toast {
+  msg: string;
+  visible: boolean;
+}
+
+const CATEGORIES = [
+  { key: "Бүгд", label: "Бүгд", emoji: "🍽" },
+  { key: "Монгол хоол", label: "Монгол хоол", emoji: "🥟" },
+  { key: "Fast Food", label: "Fast Food", emoji: "🍔" },
+  { key: "Зууш", label: "Зууш", emoji: "🍟" },
+  { key: "Ундаа", label: "Ундаа", emoji: "🥤" },
+  { key: "Амттан", label: "Амттан", emoji: "🍫" },
 ];
 
-const fmt = (p: number | undefined | null) => {
-  if (p === undefined || p === null) return "₮0";
-  return `₮${Number(p).toLocaleString()}`;
-};
+// Fallback seed data
+const SEED_MENU: MenuItem[] = [
+  { id: "1", name: "Бууз", price: 12000, category: "Монгол хоол", emoji: "🥟", description: "Уламжлалт гарын бууз (10 ш)", is_new: false, available: true },
+  { id: "2", name: "Хуушуур", price: 9500, category: "Монгол хоол", emoji: "🫓", description: "Шарсан хуушуур (5 ш), малын мах", is_new: true, available: true },
+  { id: "5", name: "Chicken Burger", price: 18500, category: "Fast Food", emoji: "🍔", description: "Crispy chicken, coleslaw, BBQ sauce", is_new: true, available: true },
+  { id: "11", name: "Monster Energy", price: 6500, category: "Ундаа", emoji: "⚡", description: "Monster Energy Original 500ml", is_new: false, available: true },
+];
 
-// ─── HOME ─────────────────────────────────────────────────────────────────────
-function HomePage({ onNavigate }: { onNavigate: (page: string) => void }) {
-  return (
-    <div className="home-page">
-      <div className="home-badge">🏫 School Canteen</div>
-      <h1 className="home-title">Nom<span className="accent">.</span><br />Canteen</h1>
-      <p className="home-desc">Fresh, warm meals crafted daily for hungry students. Browse today's menu, place your order in seconds, and pick up when it's ready.</p>
-      <button className="cta-btn" onClick={() => onNavigate("menu")}>View Today's Menu <span>→</span></button>
-      <div className="home-cards-row">
-        {["🕗 Open 7–9AM", "🍽️ Fresh Daily", "📲 Order Fast"].map((t) => (
-          <div key={t} className="home-chip">{t}</div>
-        ))}
-      </div>
-      <div className="home-preview">
-        {MENU_ITEMS.slice(0, 3).map((item) => (
-          <div key={item.id} className="preview-card">
-            <span className="preview-emoji">{item.emoji}</span>
-            <span className="preview-name">{item.name}</span>
-            <span className="preview-price">{fmt(item.price)}</span>
-          </div>
-        ))}
-        <button className="preview-more" onClick={() => onNavigate("menu")}>+{MENU_ITEMS.length - 3} more items →</button>
-      </div>
-    </div>
-  );
+function generateTimeSlots(): string[] {
+  const slots: string[] = [];
+  const now = new Date();
+  let h = now.getHours();
+  let m = Math.ceil(now.getMinutes() / 15) * 15;
+  if (m >= 60) { m = 0; h++; }
+  h += 1;
+  for (let i = 0; i < 10; i++) {
+    const totalMin = h * 60 + m + i * 15;
+    const th = Math.floor(totalMin / 60);
+    const tm = totalMin % 60;
+    if (th < 8 || th > 21) continue;
+    slots.push(`${String(th).padStart(2, "0")}:${String(tm).padStart(2, "0")}`);
+  }
+  return [...new Set(slots)].slice(0, 6);
 }
 
-// ─── MENU PAGE ────────────────────────────────────────────────────────────────
-function MenuPage() {
-  const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
-  const [orders, setOrders]             = useState<Order[]>([]);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [studentName, setStudentName]   = useState("");
-  const [quantity, setQuantity]         = useState(1);
-  const [formError, setFormError]       = useState("");
-  const [successMsg, setSuccessMsg]     = useState("");
-  const [hoveredId, setHoveredId]       = useState<number | null>(null);
+// ============================================================
+// MAIN COMPONENT
+// ============================================================
+export default function SmartCanteen() {
+  // --- Auth State ---
+  const [user, setUser] = useState<User | null>(null);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [authMode, setAuthMode] = useState<"login" | "signup">("login");
+  const [authLoading, setAuthLoading] = useState(false);
 
-  useEffect(() => { fetchOrders(); }, []);
+  // --- App State ---
+  const [menu, setMenu] = useState<MenuItem[]>([]);
+  const [cart, setCart] = useState<Record<string, CartEntry>>({});
+  const [activeCategory, setActiveCategory] = useState("Бүгд");
+  const [cartOpen, setCartOpen] = useState(false);
+  const [selectedTime, setSelectedTime] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [ordering, setOrdering] = useState(false);
+  const [toast, setToast] = useState<Toast>({ msg: "", visible: false });
+  const [timeSlots] = useState<string[]>(generateTimeSlots());
 
-  async function fetchOrders() {
-    const { data, error } = await supabase
-      .from("orders")
-      .select("*")
-      .order("created_at", { ascending: false });
-    if (!error && data) setOrders(data as Order[]);
-  }
+  // 1. Authentication Lifecycle
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+    });
 
-  function handleSelectItem(item: MenuItem) {
-    setSelectedItem(item);
-    setStudentName(""); setQuantity(1); setFormError(""); setSuccessMsg("");
-    setTimeout(() => document.getElementById("order-form-section")?.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
-  }
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
 
-  async function handlePlaceOrder(e: React.FormEvent) {
-    e.preventDefault();
-    if (!selectedItem) return;
-    if (!studentName.trim()) { setFormError("Please enter your student name."); return; }
-    
-    setFormError(""); 
-    setIsSubmitting(true);
+    return () => subscription.unsubscribe();
+  }, []);
 
-    const orderData = {
-      student_name: studentName.trim(),
-      item_name:    selectedItem.name,
-      quantity,
-      total_price:  selectedItem.price * quantity,
-    };
-
-    // We use .select() to get the generated ID and created_at back from Supabase
-    const { data, error } = await supabase
-      .from("orders")
-      .insert([orderData])
-      .select();
-
-    if (!error) {
-      if (data && data[0]) {
-        setOrders((prev) => [data[0] as Order, ...prev]);
-      } else {
-        // Fallback if select doesn't return data (due to RLS policies etc)
-        setOrders((prev) => [{ id: Date.now(), created_at: new Date().toISOString(), ...orderData }, ...prev]);
+  // 2. Fetch Menu
+  useEffect(() => {
+    if (!user) return;
+    async function fetchMenu() {
+      try {
+        const { data, error } = await supabase
+          .from("foods")
+          .select("*")
+          .eq("available", true)
+          .order("category");
+        if (error) throw error;
+        setMenu(data && data.length > 0 ? data : SEED_MENU);
+      } catch (err) {
+        setMenu(SEED_MENU);
+      } finally {
+        setLoading(false);
       }
-      
-      setSelectedItem(null);
-      setSuccessMsg(`✓ "${orderData.item_name}" order placed successfully!`);
-      setTimeout(() => setSuccessMsg(""), 4000);
-    } else {
-      // Direct peer-to-peer tip: If this still fails, check the column names in Supabase Dashboard!
-      setFormError(`Database Error: ${error.message}`);
     }
-    setIsSubmitting(false);
+    fetchMenu();
+  }, [user]);
+
+  // 3. Auth Actions
+  const handleAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthLoading(true);
+    try {
+      const { error } = authMode === "login" 
+        ? await supabase.auth.signInWithPassword({ email, password })
+        : await supabase.auth.signUp({ email, password });
+      
+      if (error) throw error;
+      if (authMode === "signup") showToast("Бүртгэл амжилттай. Имэйлээ баталгаажуулна уу.");
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setCart({});
+  };
+
+  // 4. Cart Logic
+  const addToCart = useCallback((item: MenuItem) => {
+    setCart((prev) => ({
+      ...prev,
+      [item.id]: { item, qty: (prev[item.id]?.qty ?? 0) + 1 },
+    }));
+    showToast(`${item.name} нэмэгдлээ`);
+  }, []);
+
+  const changeQty = useCallback((id: string, delta: number) => {
+    setCart((prev) => {
+      const entry = prev[id];
+      if (!entry) return prev;
+      const newQty = entry.qty + delta;
+      if (newQty <= 0) {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      }
+      return { ...prev, [id]: { ...entry, qty: newQty } };
+    });
+  }, []);
+
+  const cartEntries = Object.values(cart);
+  const cartCount = cartEntries.reduce((a, e) => a + e.qty, 0);
+  const cartTotal = cartEntries.reduce((a, e) => a + e.item.price * e.qty, 0);
+
+  // 5. Order Logic
+  const placeOrder = async () => {
+    if (!selectedTime || cartCount === 0 || !user) return;
+    setOrdering(true);
+    try {
+      const { error } = await supabase.from("orders").insert({
+        items: cartEntries.map(({ item, qty }) => ({ id: item.id, name: item.name, price: item.price, qty, emoji: item.emoji })),
+        total: cartTotal,
+        pickup_time: selectedTime,
+        status: "pending",
+        user_id: user.id
+      });
+
+      if (error) throw error;
+
+      setCart({});
+      setSelectedTime(null);
+      setCartOpen(false);
+      showToast(`Захиалга баталгаажлаа!`);
+    } catch (err) {
+      showToast("Алдаа гарлаа. Дахин оролдоно уу.");
+    } finally {
+      setOrdering(false);
+    }
+  };
+
+  const showToast = (msg: string) => {
+    setToast({ msg, visible: true });
+    setTimeout(() => setToast((t) => ({ ...t, visible: false })), 2800);
+  };
+
+  // 6. Filter Groups
+  const catGroups = activeCategory === "Бүгд"
+    ? CATEGORIES.slice(1).map((c) => ({
+        label: c.label,
+        items: menu.filter((i) => i.category === c.key),
+      })).filter((g) => g.items.length > 0)
+    : [{ label: activeCategory, items: menu.filter((i) => i.category === activeCategory) }];
+
+  // --- RENDER LOGIN IF NO USER ---
+  if (!user) {
+    return (
+      <div style={{ minHeight: "100vh", background: "#0A0A0A", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif" }}>
+        <form onSubmit={handleAuth} style={{ background: "#141414", padding: "2.5rem", borderRadius: "20px", border: "1px solid rgba(255,255,255,0.05)", width: "100%", maxWidth: "400px", boxShadow: "0 20px 50px rgba(0,0,0,0.5)" }}>
+          <h1 style={{ color: "#D4A843", fontFamily: "'Bebas Neue', sans-serif", fontSize: "2.5rem", textAlign: "center", marginBottom: "0.5rem", letterSpacing: "2px" }}>SmartHub</h1>
+          <p style={{ color: "#666", textAlign: "center", fontSize: "0.9rem", marginBottom: "2rem" }}>Захиалга өгөхийн тулд нэвтэрнэ үү</p>
+          
+          <div style={{ marginBottom: "1rem" }}>
+            <label style={{ display: "block", color: "#888", fontSize: "0.75rem", marginBottom: "0.5rem", textTransform: "uppercase" }}>Имэйл хаяг</label>
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)} required style={{ width: "100%", padding: "0.9rem", background: "#1E1E1E", border: "1px solid #333", color: "white", borderRadius: "10px", outline: "none" }} placeholder="email@example.com" />
+          </div>
+          
+          <div style={{ marginBottom: "1.5rem" }}>
+            <label style={{ display: "block", color: "#888", fontSize: "0.75rem", marginBottom: "0.5rem", textTransform: "uppercase" }}>Нууц үг</label>
+            <input type="password" value={password} onChange={e => setPassword(e.target.value)} required style={{ width: "100%", padding: "0.9rem", background: "#1E1E1E", border: "1px solid #333", color: "white", borderRadius: "10px", outline: "none" }} placeholder="••••••••" />
+          </div>
+
+          <button type="submit" disabled={authLoading} style={{ width: "100%", padding: "1rem", background: "#D4A843", border: "none", borderRadius: "10px", color: "black", fontWeight: 700, cursor: "pointer", fontSize: "1rem", transition: "0.2s" }}>
+            {authLoading ? "Түр хүлээнэ үү..." : authMode === "login" ? "Нэвтрэх" : "Бүртгүүлэх"}
+          </button>
+
+          <div onClick={() => setAuthMode(authMode === "login" ? "signup" : "login")} style={{ marginTop: "1.5rem", textAlign: "center", color: "#888", fontSize: "0.85rem", cursor: "pointer", textDecoration: "underline" }}>
+            {authMode === "login" ? "Шинээр бүртгэл үүсгэх үү?" : "Нэвтрэх хэсэг рүү буцах"}
+          </div>
+        </form>
+      </div>
+    );
   }
 
+  // --- MAIN APP RENDER ---
   return (
-    <div className="menu-page">
-      <div className="page-header">
-        <h2 className="page-title">Today&apos;s Menu</h2>
-        <p className="page-sub">{new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}</p>
-      </div>
-
-      {successMsg && <div className="success-banner">{successMsg}</div>}
-
-      <div className="menu-grid">
-        {MENU_ITEMS.map((item) => (
-          <div
-            key={item.id}
-            className={`menu-card${hoveredId === item.id ? " hovered" : ""}${selectedItem?.id === item.id ? " selected" : ""}`}
-            onMouseEnter={() => setHoveredId(item.id)}
-            onMouseLeave={() => setHoveredId(null)}
-          >
-            <div className="card-top">
-              <span className="card-emoji">{item.emoji}</span>
-              <span className="card-tag">{item.tag}</span>
-            </div>
-            <h3 className="card-name">{item.name}</h3>
-            <p className="card-desc">{item.description}</p>
-            <div className="card-footer">
-              <span className="card-price">{fmt(item.price)}</span>
-              <button
-                className={`order-btn${selectedItem?.id === item.id ? " order-btn-active" : ""}`}
-                onClick={() => handleSelectItem(item)}
-              >
-                {selectedItem?.id === item.id ? "Ordering ✓" : "Order"}
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {selectedItem && (
-        <section id="order-form-section" className="order-form-section">
-          <h3 className="form-section-title">Complete Your Order</h3>
-          <form onSubmit={handlePlaceOrder} className="inline-form">
-
-            <div className="if-field">
-              <span className="if-label">Selected Item</span>
-              <div className="if-item-box">
-                <span>{selectedItem.emoji}</span>
-                <span>{selectedItem.name}</span>
-                <span className="if-item-price">{fmt(selectedItem.price)}</span>
-              </div>
-            </div>
-
-            <label className="if-field">
-              <span className="if-label">Student Name</span>
-              <input
-                className="form-input"
-                type="text"
-                placeholder="e.g. Enkhjargal B."
-                value={studentName}
-                onChange={(e) => setStudentName(e.target.value)}
-                required
-              />
-            </label>
-
-            <label className="if-field">
-              <span className="if-label">Quantity</span>
-              <div className="qty-row">
-                <button type="button" className="qty-btn" onClick={() => setQuantity((q) => Math.max(1, q - 1))}>−</button>
-                <span className="qty-display">{quantity}</span>
-                <button type="button" className="qty-btn" onClick={() => setQuantity((q) => Math.min(10, q + 1))}>+</button>
-              </div>
-            </label>
-
-            {formError && <p className="form-error">{formError}</p>}
-
-            <div className="order-total">
-              <span>Total</span>
-              <span className="total-price">{fmt(selectedItem.price * quantity)}</span>
-            </div>
-
-            <div className="form-actions">
-              <button type="button" className="ghost-btn" onClick={() => { setSelectedItem(null); setFormError(""); }}>Cancel</button>
-              <button type="submit" className="submit-btn" disabled={isSubmitting}>
-                {isSubmitting ? "Placing…" : "Confirm Order ✓"}
-              </button>
-            </div>
-          </form>
-        </section>
-      )}
-
-      <section className="orders-section">
-        <h3 className="orders-section-title">Recent Orders</h3>
-        {orders.length === 0 ? (
-          <div className="empty-state">
-            <span className="empty-icon">🍽️</span>
-            <p>No orders placed yet. Hunger awaits!</p>
-          </div>
-        ) : (
-          <div className="orders-table-wrap">
-            <table className="orders-table">
-              <thead>
-                <tr><th>Student</th><th>Item</th><th>Qty</th><th>Total</th></tr>
-              </thead>
-              <tbody>
-                {orders.map((o) => (
-                  <tr key={o.id}>
-                    <td className="td-student">{o.student_name}</td>
-                    <td>{o.item_name}</td>
-                    <td>{o.quantity}</td>
-                    <td className="td-total">{fmt(o.total_price)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
-    </div>
-  );
-}
-
-// ─── NAV ──────────────────────────────────────────────────────────────────────
-function Nav({ page, onNavigate }: { page: string; onNavigate: (p: string) => void }) {
-  return (
-    <nav className="nav">
-      <button className="nav-logo" onClick={() => onNavigate("home")}>Nom<span className="accent">.</span></button>
-      <div className="nav-links">
-        {["home", "menu"].map((p) => (
-          <button key={p} className={`nav-link${page === p ? " active" : ""}`} onClick={() => onNavigate(p)}>
-            {p === "home" ? "Home" : "Menu"}
-          </button>
-        ))}
-      </div>
-    </nav>
-  );
-}
-
-// ─── APP ──────────────────────────────────────────────────────────────────────
-export default function SmartCanteenPage() {
-  const [page, setPage] = useState("home");
-  return (
-    <>
+    <div style={{ minHeight: "100vh", background: "#0A0A0A", color: "#F5F0E8", fontFamily: "'DM Sans', sans-serif" }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@400;500;600&display=swap');
-        *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-        :root{
-          --cream:#fdf6ec;--warm-white:#fffdf9;
-          --amber:#e8840a;--amber-light:#fbb040;--amber-pale:#fff3d6;
-          --brown:#3d2104;--brown-mid:#7a4310;
-          --gray:#6b6258;--gray-light:#ede7df;
-          --green:#3a7d44;--green-pale:#edf7ef;--red:#c0392b;
-          --radius:16px;--radius-sm:10px;
-          --shadow:0 4px 24px rgba(61,33,4,.10);--shadow-hover:0 8px 36px rgba(61,33,4,.18);
-        }
-        body{font-family:'DM Sans',sans-serif;background:var(--cream);color:var(--brown);min-height:100vh}
-        button{cursor:pointer;border:none;background:none;font-family:inherit}
-        .nav{position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:0 24px;height:60px;background:rgba(253,246,236,.92);backdrop-filter:blur(12px);border-bottom:1.5px solid var(--gray-light)}
-        .nav-logo{font-family:'Playfair Display',serif;font-size:1.5rem;font-weight:900;color:var(--brown)}
-        .accent{color:var(--amber)}
-        .nav-links{display:flex;gap:8px}
-        .nav-link{padding:6px 16px;border-radius:20px;font-size:.9rem;font-weight:500;color:var(--gray);transition:all .2s;text-transform:capitalize}
-        .nav-link.active,.nav-link:hover{background:var(--amber-pale);color:var(--amber)}
-        .app-shell{max-width:600px;margin:0 auto;padding:0 16px 80px}
-        .home-page{padding-top:40px}
-        .home-badge{display:inline-block;background:var(--amber-pale);color:var(--amber);border-radius:20px;padding:6px 16px;font-size:.82rem;font-weight:600;letter-spacing:.04em;margin-bottom:20px}
-        .home-title{font-family:'Playfair Display',serif;font-size:clamp(3rem,14vw,5rem);font-weight:900;line-height:1.0;color:var(--brown);margin-bottom:20px}
-        .home-desc{font-size:1rem;color:var(--gray);line-height:1.7;max-width:400px;margin-bottom:32px}
-        .cta-btn{display:inline-flex;align-items:center;gap:10px;background:var(--amber);color:white;padding:14px 28px;border-radius:40px;font-size:1rem;font-weight:600;transition:all .2s;box-shadow:0 4px 20px rgba(232,132,10,.35)}
-        .cta-btn:hover{background:var(--brown-mid);transform:translateY(-2px)}
-        .home-cards-row{display:flex;gap:10px;margin-top:36px;flex-wrap:wrap}
-        .home-chip{background:var(--warm-white);border:1.5px solid var(--gray-light);border-radius:20px;padding:8px 16px;font-size:.84rem;font-weight:500;color:var(--brown-mid)}
-        .home-preview{margin-top:32px;background:var(--warm-white);border:1.5px solid var(--gray-light);border-radius:var(--radius);padding:20px;display:flex;flex-direction:column;gap:12px}
-        .preview-card{display:flex;align-items:center;gap:14px;padding:10px 0;border-bottom:1px solid var(--gray-light)}
-        .preview-card:last-of-type{border-bottom:none}
-        .preview-emoji{font-size:1.6rem}
-        .preview-name{flex:1;font-weight:600;font-size:.95rem}
-        .preview-price{font-weight:700;color:var(--amber);font-size:.9rem}
-        .preview-more{text-align:center;padding:10px;color:var(--amber);font-weight:600;font-size:.9rem}
-        .preview-more:hover{text-decoration:underline}
-        .menu-page{padding-top:32px;display:flex;flex-direction:column;gap:32px}
-        .page-title{font-family:'Playfair Display',serif;font-size:2rem;font-weight:900;color:var(--brown)}
-        .page-sub{font-size:.88rem;color:var(--gray);margin-top:4px}
-        .success-banner{background:var(--green-pale);color:var(--green);border:1.5px solid #b7dfbd;border-radius:var(--radius-sm);padding:12px 18px;font-weight:600;font-size:.9rem;animation:slideIn .3s ease}
-        @keyframes slideIn{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
-        .menu-grid{display:flex;flex-direction:column;gap:16px}
-        .menu-card{background:var(--warm-white);border:1.5px solid var(--gray-light);border-radius:var(--radius);padding:20px;transition:all .22s;box-shadow:var(--shadow)}
-        .menu-card.hovered{border-color:var(--amber-light);box-shadow:var(--shadow-hover);transform:translateY(-2px)}
-        .menu-card.selected{border-color:var(--amber);background:#fffbf5}
-        .card-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
-        .card-emoji{font-size:2.4rem}
-        .card-tag{background:var(--amber-pale);color:var(--amber);border-radius:12px;padding:4px 12px;font-size:.75rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
-        .card-name{font-family:'Playfair Display',serif;font-size:1.2rem;font-weight:700;color:var(--brown);margin-bottom:6px}
-        .card-desc{font-size:.88rem;color:var(--gray);line-height:1.6;margin-bottom:16px}
-        .card-footer{display:flex;align-items:center;justify-content:space-between}
-        .card-price{font-size:1.15rem;font-weight:800;color:var(--brown)}
-        .order-btn{background:var(--amber);color:white;padding:10px 22px;border-radius:24px;font-size:.9rem;font-weight:600;transition:all .18s}
-        .order-btn:hover{background:var(--brown-mid);transform:scale(1.04)}
-        .order-btn-active{background:var(--green) !important}
-        .order-form-section{background:var(--amber-pale);border:1.5px solid #f5cc7f;border-radius:var(--radius);padding:24px;box-shadow:var(--shadow);animation:slideIn .3s ease}
-        .form-section-title{font-family:'Playfair Display',serif;font-size:1.25rem;font-weight:800;color:var(--brown);margin-bottom:20px}
-        .inline-form{display:flex;flex-direction:column;gap:18px}
-        .if-field{display:flex;flex-direction:column;gap:6px}
-        .if-label{font-size:.75rem;font-weight:700;color:var(--brown-mid);text-transform:uppercase;letter-spacing:.06em}
-        .if-item-box{display:flex;align-items:center;gap:10px;background:white;border:1.5px solid #f5cc7f;border-radius:var(--radius-sm);padding:12px 16px;font-weight:700;font-size:.95rem;color:var(--brown)}
-        .if-item-price{margin-left:auto;color:var(--amber);font-weight:800}
-        .form-input{width:100%;padding:13px 16px;border:1.5px solid #f5cc7f;border-radius:var(--radius-sm);font-family:inherit;font-size:.95rem;color:var(--brown);background:white;transition:border-color .2s;outline:none}
-        .form-input:focus{border-color:var(--amber)}
-        .qty-row{display:flex;align-items:center;gap:16px}
-        .qty-btn{width:40px;height:40px;border-radius:50%;background:white;color:var(--amber);font-size:1.3rem;font-weight:700;border:1.5px solid #f5cc7f;transition:all .15s;display:flex;align-items:center;justify-content:center}
-        .qty-btn:hover{background:var(--amber);color:white;border-color:var(--amber)}
-        .qty-display{font-size:1.4rem;font-weight:800;min-width:32px;text-align:center;color:var(--brown)}
-        .form-error{background:#fdecea;color:var(--red);border-radius:var(--radius-sm);padding:10px 14px;font-size:.85rem;font-weight:500}
-        .order-total{display:flex;justify-content:space-between;align-items:center;padding:16px 0;border-top:1.5px solid #f5cc7f;font-weight:600;font-size:.95rem;color:var(--brown-mid)}
-        .total-price{font-size:1.3rem;font-weight:800;color:var(--brown)}
-        .form-actions{display:flex;gap:12px;justify-content:flex-end}
-        .submit-btn{background:var(--amber);color:white;padding:12px 28px;border-radius:40px;font-size:.95rem;font-weight:700;transition:all .2s;box-shadow:0 4px 16px rgba(232,132,10,.3)}
-        .submit-btn:hover:not(:disabled){background:var(--brown-mid)}
-        .submit-btn:disabled{opacity:.6;cursor:not-allowed}
-        .ghost-btn{padding:12px 20px;border-radius:40px;border:1.5px solid #f5cc7f;font-size:.9rem;font-weight:600;color:var(--brown-mid);transition:all .2s;background:white}
-        .ghost-btn:hover{border-color:var(--amber);color:var(--amber)}
-        .orders-section-title{font-family:'Playfair Display',serif;font-size:1.25rem;font-weight:800;color:var(--brown);margin-bottom:16px}
-        .empty-state{display:flex;flex-direction:column;align-items:center;gap:10px;padding:40px 20px;background:var(--warm-white);border:1.5px solid var(--gray-light);border-radius:var(--radius);color:var(--gray);font-size:.95rem}
-        .empty-icon{font-size:2.5rem}
-        .orders-table-wrap{background:var(--warm-white);border:1.5px solid var(--gray-light);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow)}
-        .orders-table{width:100%;border-collapse:collapse;font-size:.88rem}
-        .orders-table thead{background:var(--amber-pale)}
-        .orders-table th{padding:12px 16px;text-align:left;font-size:.72rem;font-weight:700;color:var(--brown-mid);text-transform:uppercase;letter-spacing:.06em}
-        .orders-table tbody tr{border-top:1px solid var(--gray-light);transition:background .15s}
-        .orders-table tbody tr:hover{background:#fffbf5}
-        .orders-table td{padding:12px 16px;color:var(--brown)}
-        .td-student{font-weight:600}
-        .td-total{font-weight:800;color:var(--green)}
+        @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&display=swap');
+        .food-card { background: #141414; border: 1px solid rgba(255,255,255,0.07); border-radius: 16px; overflow: hidden; transition: 0.25s; position: relative; }
+        .food-card:hover { border-color: #D4A843; transform: translateY(-3px); }
+        .add-btn { background: #D4A843; color: #000; border: none; border-radius: 8px; padding: 0.5rem 1rem; font-weight: 700; cursor: pointer; }
+        .cat-btn { display: flex; align-items: center; gap: 0.8rem; width: 100%; padding: 0.8rem 1.25rem; background: none; border: none; color: #888; cursor: pointer; text-align: left; border-left: 3px solid transparent; }
+        .cat-btn.active { color: #D4A843; border-left-color: #D4A843; background: rgba(212,168,67,0.05); }
+        .time-slot { background: #1E1E1E; border: 1px solid #333; color: #888; padding: 0.4rem 0.8rem; border-radius: 8px; cursor: pointer; }
+        .time-slot.selected { background: #D4A843; color: black; border-color: #D4A843; }
+        .order-btn { width: 100%; padding: 1rem; background: #D4A843; color: black; border: none; border-radius: 12px; font-weight: 700; cursor: pointer; }
+        .qty-btn { width: 28px; height: 28px; background: #333; border: none; color: white; border-radius: 6px; cursor: pointer; }
       `}</style>
-      <Nav page={page} onNavigate={setPage} />
-      <div className="app-shell">
-        {page === "home" && <HomePage onNavigate={setPage} />}
-        {page === "menu" && <MenuPage />}
+
+      {/* NAVBAR */}
+      <nav style={{ position: "sticky", top: 0, zIndex: 100, background: "rgba(10,10,10,0.9)", backdropFilter: "blur(10px)", borderBottom: "1px solid #222", padding: "0 2rem", height: 70, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: "2rem", letterSpacing: 2 }}>Smart<span style={{ color: "#D4A843" }}>Hub</span></div>
+        
+        <div style={{ display: "flex", alignItems: "center", gap: "1.5rem" }}>
+          <div style={{ textAlign: "right", display: "none", md: "block" }}>
+            <div style={{ fontSize: "0.8rem", fontWeight: 600 }}>{user.email}</div>
+            <div onClick={handleLogout} style={{ fontSize: "0.7rem", color: "#D4A843", cursor: "pointer", textDecoration: "underline" }}>Системээс гарах</div>
+          </div>
+          
+          <button onClick={() => setCartOpen(true)} style={{ background: "#D4A843", border: "none", padding: "0.6rem 1.2rem", borderRadius: "50px", fontWeight: 700, cursor: "pointer", display: "flex", gap: "0.5rem" }}>
+             🛒 {cartTotal.toLocaleString()}₮
+          </button>
+        </div>
+      </nav>
+
+      <div style={{ display: "flex" }}>
+        {/* SIDEBAR */}
+        <aside style={{ width: 240, background: "#141414", borderRight: "1px solid #222", height: "calc(100vh - 70px)", position: "sticky", top: 70, padding: "2rem 0" }}>
+          <p style={{ padding: "0 1.5rem", fontSize: "0.7rem", color: "#555", letterSpacing: 2, marginBottom: "1rem" }}>КАТЕГОРИ</p>
+          {CATEGORIES.map(cat => (
+            <button key={cat.key} className={`cat-btn ${activeCategory === cat.key ? 'active' : ''}`} onClick={() => setActiveCategory(cat.key)}>
+              <span>{cat.emoji}</span> {cat.label}
+            </button>
+          ))}
+        </aside>
+
+        {/* MAIN MENU */}
+        <main style={{ flex: 1, padding: "2.5rem" }}>
+          <h1 style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: "3rem", marginBottom: "2rem" }}>{activeCategory}</h1>
+          
+          {catGroups.map(group => (
+            <div key={group.label} style={{ marginBottom: "3rem" }}>
+              <h3 style={{ borderBottom: "1px solid #222", paddingBottom: "0.5rem", marginBottom: "1.5rem", color: "#D4A843" }}>{group.label}</h3>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "1.5rem" }}>
+                {group.items.map(item => (
+                  <div key={item.id} className="food-card">
+                    <div style={{ height: 160, background: "#1E1E1E", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "3rem" }}>{item.emoji}</div>
+                    <div style={{ padding: "1.2rem" }}>
+                      <p style={{ fontSize: "0.7rem", color: "#D4A843", fontWeight: 600 }}>{item.category}</p>
+                      <h4 style={{ margin: "0.3rem 0" }}>{item.name}</h4>
+                      <p style={{ fontSize: "0.8rem", color: "#666", marginBottom: "1rem", height: "2.4rem", overflow: "hidden" }}>{item.description}</p>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <span style={{ fontWeight: 700 }}>{item.price.toLocaleString()}₮</span>
+                        <button className="add-btn" onClick={() => addToCart(item)}>+ Нэмэх</button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </main>
       </div>
-    </>
+
+      {/* CART DRAWER */}
+      <div style={{ position: "fixed", right: 0, top: 0, bottom: 0, width: 400, background: "#141414", borderLeft: "1px solid #222", zIndex: 200, transform: cartOpen ? "translateX(0)" : "translateX(100%)", transition: "0.3s ease", padding: "2rem", display: "flex", flexDirection: "column" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "2rem" }}>
+          <h2 style={{ fontFamily: "'Bebas Neue', sans-serif" }}>САГС</h2>
+          <button onClick={() => setCartOpen(false)} style={{ background: "none", border: "none", color: "white", fontSize: "1.5rem", cursor: "pointer" }}>✕</button>
+        </div>
+
+        <div style={{ flex: 1, overflowY: "auto" }}>
+          {cartEntries.map(({ item, qty }) => (
+            <div key={item.id} style={{ display: "flex", gap: "1rem", padding: "1rem 0", borderBottom: "1px solid #222" }}>
+              <div style={{ width: 50, height: 50, background: "#1E1E1E", borderRadius: "8px", display: "flex", alignItems: "center", justifyContent: "center" }}>{item.emoji}</div>
+              <div style={{ flex: 1 }}>
+                <p style={{ fontWeight: 600, fontSize: "0.9rem" }}>{item.name}</p>
+                <p style={{ color: "#D4A843", fontSize: "0.8rem" }}>{item.price.toLocaleString()}₮</p>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <button className="qty-btn" onClick={() => changeQty(item.id, -1)}>−</button>
+                <span>{qty}</span>
+                <button className="qty-btn" onClick={() => changeQty(item.id, 1)}>+</button>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ marginTop: "2rem" }}>
+          <p style={{ fontSize: "0.8rem", color: "#666", marginBottom: "0.5rem" }}>ХҮЛЭЭН АВАХ ЦАГ</p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginBottom: "2rem" }}>
+            {timeSlots.map(slot => (
+              <button key={slot} className={`time-slot ${selectedTime === slot ? 'selected' : ''}`} onClick={() => setSelectedTime(slot)}>{slot}</button>
+            ))}
+          </div>
+          
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "1rem" }}>
+            <span>Нийт:</span>
+            <span style={{ color: "#D4A843", fontWeight: 700, fontSize: "1.2rem" }}>{cartTotal.toLocaleString()}₮</span>
+          </div>
+          <button className="order-btn" onClick={placeOrder} disabled={ordering || !selectedTime || cartCount === 0}>
+            {ordering ? "Илгээж байна..." : "Захиалга өгөх"}
+          </button>
+        </div>
+      </div>
+
+      {/* TOAST */}
+      {toast.visible && (
+        <div style={{ position: "fixed", bottom: "2rem", left: "50%", transform: "translateX(-50%)", background: "#D4A843", color: "black", padding: "1rem 2rem", borderRadius: "10px", fontWeight: 700, zIndex: 1000 }}>
+          {toast.msg}
+        </div>
+      )}
+    </div>
   );
 }

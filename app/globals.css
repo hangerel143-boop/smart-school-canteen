@@ -24,3 +24,11 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+nav.bg-white.border-b.border-gray-200.px-6.py-2.flex.gap-4.overflow-x-auto {
+    margin: 10px;
+}
+
+header.bg-blue-700.text-white.px-6.py-4.shadow-md {
+    padding: 10px 30px;
+}

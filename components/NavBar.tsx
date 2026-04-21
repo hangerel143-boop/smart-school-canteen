@@ -5,9 +5,8 @@ import { usePathname } from 'next/navigation'
 
 const links = [
   { label: 'Home', href: '/' },
-  { label: 'Lost & Found', href: '/lost-found' },
-  { label: 'News Board', href: '/news-board' },
-  { label: 'Club Manager', href: '/club-manager' },
+  { label: 'Report', href: '/smart-canteen/report' },
+  { label: 'admin', href: '/smart-canteen/report-admin' },
   { label: 'Smart Canteen', href: '/smart-canteen' },
 ]
 
